@@ -1,4 +1,4 @@
-
+#!/usr/bin/env node
 require('console-info');
 require('console-warn');
 require('console-error');
