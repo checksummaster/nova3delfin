@@ -4,16 +4,41 @@ const fs = require('fs');
 const path = require('path');
 const net = require('net');
 
+const { networkInterfaces } = require('os');
+
+const nets = networkInterfaces();
+
+
+
 module.exports = function (_ip,_network,verbose)
 {
     const port = 8081;
-    this.network = _network?_network:'192.168.1';
+    //this.network = _network?_network:'192.168.1';
     this.ip = _ip?`http://${_ip}:${port}`:undefined;
+
+    
+    function getiplist()
+    {
+        var out = [];
+        for (const name of Object.keys(nets)) {
+            for (const net of nets[name]) {
+                if (net.family === 'IPv4' && !net.internal) {
+                    out.push(net.address.substr(0, net.address.lastIndexOf(".")));
+                }
+            }
+        }
+        return out;
+    }
+
     this.getip =  function()
     {
         return new Promise((resolve,reject)=> { 
             if (this.ip === undefined) {
-                this.findPrinter(this.network).then(v=>{resolve(v)}).catch(v=>reject(v))                
+                var network = [_network];
+                if (_network === undefined) {
+                    network = getiplist();
+                }                
+                this.findPrinter(network).then(v=>{resolve(v)}).catch(v=>reject(v))                
             } else {                      
                 resolve (this.ip);
             }
@@ -195,66 +220,68 @@ module.exports = function (_ip,_network,verbose)
         });
     }
 
-    this.findPrinter = function(base)
+    this.findPrinter = function(basearray)
     {
         return new Promise((resolve,reject)=> {
-            if (verbose) console.info(`Search printer on network ${this.network}.x:${port}`);
-            var ip = 254; //IP address to start with on a C class network
-
             socketlist = [];
-        
             var found = false;
-            const controller = new AbortController();
+            for (base of basearray) {
+                if (found) {
+                    break;
+                }
+                if (verbose) console.info(`Search printer on network ${base}.x:${port}`);
+                var ip = 254; //IP address to start with on a C class network
 
+                const controller = new AbortController();
 
-            var fetchcount = 0;
-            var connectcount = 0;
-            
-            function checkConnect (obj) {
-                ip--;
-                var thisIP = `${base}.${ip}`; //concatenate to a real IP address
+                var fetchcount = 0;
+                var connectcount = 0;
+                
+                function checkConnect (obj) {
+                    ip--;
+                    var thisIP = `${base}.${ip}`; //concatenate to a real IP address
 
-                var S = new net.Socket();
-                socketlist.push(S);
-                connectcount++;
-                S.connect(port, thisIP);
+                    var S = new net.Socket();
+                    socketlist.push(S);
+                    connectcount++;
+                    S.connect(port, thisIP);
 
-                if(ip > 0 && !found) { checkConnect(obj); }
+                    if(ip > 0 && !found) { checkConnect(obj); }
 
-                S.on('connect',  ()=> {
-                    connectcount--;
-                    fetchcount++;
-                    if (verbose) console.info(`fetch http://${thisIP}:${port}/setting/printerInfo`)
-                    fetch(`http://${thisIP}:${port}/setting/printerInfo`,{signal:controller.signal})
-                    .then(res => res.text())
-                    .then(text => {
-                        fetchcount--;
-                        //console.info(`elfin  found on ${thisIP} ${text}`);
-                        found = true;                   
-                        for (var i of socketlist) {
-                            i.destroy();
-                        } 
-                        controller.abort();
-                        obj.ip = `http://${thisIP}:${port}`;
-                        if (verbose) console.info(`find it at ${obj.ip}`);
-                        resolve(obj.ip);                
-                    })
-                    .catch(e=>{
-                        fetchcount--;
+                    S.on('connect',  ()=> {
+                        connectcount--;
+                        fetchcount++;
+                        if (verbose) console.info(`fetch http://${thisIP}:${port}/setting/printerInfo`)
+                        fetch(`http://${thisIP}:${port}/setting/printerInfo`,{signal:controller.signal})
+                        .then(res => res.text())
+                        .then(text => {
+                            fetchcount--;
+                            found = true;                   
+                            for (var i of socketlist) {
+                                i.destroy();
+                            } 
+                            controller.abort();
+                            obj.ip = `http://${thisIP}:${port}`;
+                            if (verbose) console.info(`find elfin at ${obj.ip}`);
+                            resolve(obj.ip);                
+                        })
+                        .catch(e=>{
+                            fetchcount--;
+                            if (fetchcount === 0 && connectcount === 0) {
+                                reject();
+                            }
+                        });
+                    });  
+                    S.on('error',()=>{
+                        connectcount--;
                         if (fetchcount === 0 && connectcount === 0) {
-                            reject();
+                            reject('no printer found');
                         }
-                    });
-                });  
-                S.on('error',()=>{
-                    connectcount--;
-                    if (fetchcount === 0 && connectcount === 0) {
-                        reject('no printer found');
-                    }
-                });         
-                S.end();
-            };
-            checkConnect(this);
+                    });         
+                    S.end();
+                };
+                checkConnect(this);
+            }
         });
     }
 }
