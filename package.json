@@ -16,9 +16,15 @@
     "node-fetch": "^2.6.0",
     "pngjs": "^5.0.0"
   },
-  "devDependencies": {},
+  "devDependencies": {
+    "pkg": "^4.4.9"
+  },
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "buildlinux": "node_modules/.bin/pkg index.js -t node12-linux-x64 -o nova3delfin-linux",
+    "buildmac":   "node_modules/.bin/pkg index.js -t node12-macos-x64 -o nova3delfin-mac",
+    "buildwin":   "node_modules/.bin/pkg index.js -t node12-win-x64 -o nova3delfin",
+    "build":"npm run buildlinux&npm run buildmac&npm run buildwin"
   },
   "author": "",
   "license": "ISC"
